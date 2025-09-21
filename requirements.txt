@@ -1,0 +1,14 @@
+Django
+djangorestframework
+django-cors-headers
+django-channels
+channels-redis
+web3
+py-solc-x
+python-dotenv
+cryptography
+celery
+redis
+pytest
+pytest-django
+requests
