@@ -88,6 +88,21 @@ class CustomUser(AbstractUser):
     
     def __str__(self):
         return f"{self.username} - {self.get_role_display()}"
+    
+    def set_blockchain_credentials(self, address, private_key):
+        """Set blockchain address and encrypted private key"""
+        self.blockchain_address = address
+        self.encrypt_private_key(private_key)
+        self.save()
+    
+    def get_decrypted_private_key(self):
+        """Get decrypted private key (use with caution)"""
+        from .encryption import decrypt_data
+        return decrypt_data(self.encrypted_private_key)
+    
+    def has_blockchain_credentials(self):
+        """Check if user has blockchain credentials"""
+        return bool(self.blockchain_address and self.encrypted_private_key)
 
 class DepartmentRequest(models.Model):
     PRIORITY_CHOICES = [

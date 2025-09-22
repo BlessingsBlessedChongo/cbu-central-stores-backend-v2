@@ -1,3 +1,4 @@
+import os
 from rest_framework import status, permissions
 from django.db import models
 from rest_framework.decorators import api_view, permission_classes
@@ -1092,3 +1093,48 @@ def send_test_notification(request):
             {'error': str(e)}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+    
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg.views import get_schema_view
+from rest_framework import permissions
+
+schema_view = get_schema_view(
+    openapi.Info(
+        title="CBU Central Stores API",
+        default_version='v2',
+        description="Blockchain-based Central Stores Management System API Documentation",
+        terms_of_service="https://cbu.edu.zm/terms/",
+        contact=openapi.Contact(email="stores@cbu.edu.zm"),
+        license=openapi.License(name="MIT License"),
+    ),
+    public=True,
+    permission_classes=(permissions.AllowAny,),
+)
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def api_overview(request):
+    """API Overview and Documentation Links"""
+    base_url = request.build_absolute_uri('/')
+    return Response({
+        'message': 'CBU Central Stores Management System API V2',
+        'version': '2.0.0',
+        'documentation': {
+            'swagger': f'{base_url}swagger/',
+            'redoc': f'{base_url}redoc/',
+            'endpoints': {
+                'authentication': f'{base_url}api/auth/',
+                'requests': f'{base_url}api/requests/',
+                'stocks': f'{base_url}api/stocks/',
+                'deliveries': f'{base_url}api/deliveries/',
+                'notifications': f'{base_url}api/notifications/',
+                'blockchain': f'{base_url}api/blockchain/',
+            }
+        },
+        'blockchain': {
+            'network': 'Ganache Local',
+            'contract_address': os.getenv('CONTRACT_ADDRESS', 'Not deployed'),
+            'status': 'Connected' if web3_client.is_connected() else 'Disconnected'
+        }
+    })

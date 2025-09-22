@@ -1,3 +1,4 @@
+from pyexpat.errors import messages
 from django.contrib import admin
 from .models import ApprovalHistory, BlockchainLog, Category, CustomUser, DamageReport, Delivery, DepartmentRequest, Relocation, Stock, StockMovement
 
@@ -23,6 +24,42 @@ class CustomUserAdmin(admin.ModelAdmin):
             return f"{obj.blockchain_address[:8]}...{obj.blockchain_address[-6:]}"
         return "Not set"
     blockchain_address_short.short_description = 'Blockchain Address'
+
+    actions = ['generate_blockchain_credentials', 'reset_passwords']
+    
+    def generate_blockchain_credentials(self, request, queryset):
+        """Admin action to generate blockchain credentials for users"""
+        from web3 import Web3
+        
+        for user in queryset:
+            if not user.has_blockchain_credentials():
+                # Generate new account
+                account = Web3().eth.account.create()
+                user.set_blockchain_credentials(
+                    account.address,
+                    account.key.hex()
+                )
+                self.message_user(
+                    request,
+                    f"Generated blockchain credentials for {user.username}",
+                    messages.SUCCESS
+                )
+    
+    generate_blockchain_credentials.short_description = "Generate blockchain credentials for selected users"
+    
+    def reset_passwords(self, request, queryset):
+        """Admin action to reset user passwords"""
+        for user in queryset:
+            new_password = CustomUser.objects.make_random_password(length=16)
+            user.set_password(new_password)
+            user.save()
+            self.message_user(
+                request,
+                f"Password reset for {user.username}: {new_password}",
+                messages.WARNING
+            )
+    
+    reset_passwords.short_description = "Reset passwords for selected users"
 
 @admin.register(DepartmentRequest)
 class DepartmentRequestAdmin(admin.ModelAdmin):
