@@ -12,3 +12,4 @@ redis
 pytest
 pytest-django
 requests
+rest_framework_simplejwt
