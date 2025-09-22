@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from .models import ApprovalHistory, ApprovalStage, Category, CustomUser, DamageReport, Delivery, DepartmentRequest, Relocation, Stock, StockMovement
+from .models import ApprovalHistory, ApprovalStage, Category, CustomUser, DamageReport, Delivery, DepartmentRequest, Notification, NotificationPreference, Relocation, Stock, StockMovement
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
@@ -331,3 +331,28 @@ class RelocationUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Relocation
         fields = ['completed', 'completed_at']
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    notification_type_display = serializers.CharField(source='get_notification_type_display', read_only=True)
+    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
+    created_at = serializers.DateTimeField(format='%Y-%m-%dT%H:%M:%SZ')
+    read_at = serializers.DateTimeField(format='%Y-%m-%dT%H:%M:%SZ', allow_null=True)
+    
+    class Meta:
+        model = Notification
+        fields = [
+            'id', 'notification_type', 'notification_type_display', 'title',
+            'message', 'priority', 'priority_display', 'related_object_type',
+            'related_object_id', 'is_read', 'action_url', 'created_at', 'read_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'read_at']
+
+class NotificationPreferenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NotificationPreference
+        fields = [
+            'email_enabled', 'push_enabled', 'websocket_enabled',
+            'low_stock_alerts', 'approval_alerts', 'delivery_alerts',
+            'damage_alerts', 'reminder_alerts', 'system_alerts'
+        ]

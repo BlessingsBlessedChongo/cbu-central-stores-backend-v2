@@ -54,4 +54,11 @@ urlpatterns = [
     # Relocation endpoints
     path('api/relocate/', views.relocate_stock, name='relocate-stock'),  # POST
     path('api/relocations/', views.get_all_relocations, name='all-relocations'),  # GET
+
+    # Notification endpoints
+    path('api/notifications/', views.get_user_notifications, name='user-notifications'),
+    path('api/notifications/<int:notification_id>/read/', views.mark_notification_as_read, name='mark-notification-read'),
+    path('api/notifications/read-all/', views.mark_all_notifications_read, name='mark-all-notifications-read'),
+    path('api/notification-preferences/', views.notification_preferences, name='notification-preferences'),
+    path('api/test-notification/', views.send_test_notification, name='test-notification'),
 ]

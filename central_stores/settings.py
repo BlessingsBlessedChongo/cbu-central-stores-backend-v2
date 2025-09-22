@@ -170,3 +170,38 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Channels configuration
+ASGI_APPLICATION = 'central_stores.asgi.application'
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [('127.0.0.1', 6379)],
+        },
+    },
+}
+
+# Celery configuration
+CELERY_BROKER_URL = 'redis://127.0.0.1:6379/0'
+CELERY_RESULT_BACKEND = 'redis://127.0.0.1:6379/0'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+
+# Periodic tasks
+CELERY_BEAT_SCHEDULE = {
+    'send-approval-reminders': {
+        'task': 'core.tasks.send_approval_reminders',
+        'schedule': 3600.0,  # Every hour
+    },
+    'check-low-stock': {
+        'task': 'core.tasks.check_low_stock',
+        'schedule': 86400.0,  # Every day
+    },
+    'cleanup-notifications': {
+        'task': 'core.tasks.cleanup_old_notifications',
+        'schedule': 86400.0,  # Every day
+    },
+}

@@ -491,4 +491,67 @@ class Relocation(models.Model):
     
     def __str__(self):
         return f"{self.relocation_number} - {self.stock.item_name} - {self.from_location} to {self.to_location}"
+
+#Models for Notifications and Reminders
+class Notification(models.Model):
+    NOTIFICATION_TYPES = [
+        ('APPROVAL_PENDING', 'Approval Pending'),
+        ('APPROVAL_APPROVED', 'Approval Approved'),
+        ('APPROVAL_REJECTED', 'Approval Rejected'),
+        ('STOCK_LOW', 'Low Stock Alert'),
+        ('DELIVERY_RECEIVED', 'Delivery Received'),
+        ('DAMAGE_REPORTED', 'Damage Reported'),
+        ('RELOCATION_COMPLETED', 'Relocation Completed'),
+        ('SYSTEM_ALERT', 'System Alert'),
+        ('REMINDER', 'Reminder'),
+    ]
     
+    PRIORITY_LEVELS = [
+        ('LOW', 'Low'),
+        ('MEDIUM', 'Medium'),
+        ('HIGH', 'High'),
+        ('URGENT', 'Urgent'),
+    ]
+    
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='notifications')
+    notification_type = models.CharField(max_length=20, choices=NOTIFICATION_TYPES)
+    title = models.CharField(max_length=200)
+    message = models.TextField()
+    priority = models.CharField(max_length=10, choices=PRIORITY_LEVELS, default='MEDIUM')
+    related_object_type = models.CharField(max_length=50, blank=True, null=True)  # e.g., 'request', 'stock'
+    related_object_id = models.CharField(max_length=50, blank=True, null=True)
+    is_read = models.BooleanField(default=False)
+    action_url = models.CharField(max_length=500, blank=True, null=True)
+    scheduled_for = models.DateTimeField(null=True, blank=True)  # For scheduled notifications
+    created_at = models.DateTimeField(auto_now_add=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'is_read']),
+            models.Index(fields=['notification_type']),
+            models.Index(fields=['priority']),
+            models.Index(fields=['created_at']),
+            models.Index(fields=['scheduled_for']),
+        ]
+    
+    def __str__(self):
+        return f"{self.user.username} - {self.get_notification_type_display()} - {self.title}"
+
+class NotificationPreference(models.Model):
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name='notification_preferences')
+    email_enabled = models.BooleanField(default=True)
+    push_enabled = models.BooleanField(default=True)
+    websocket_enabled = models.BooleanField(default=True)
+    low_stock_alerts = models.BooleanField(default=True)
+    approval_alerts = models.BooleanField(default=True)
+    delivery_alerts = models.BooleanField(default=True)
+    damage_alerts = models.BooleanField(default=True)
+    reminder_alerts = models.BooleanField(default=True)
+    system_alerts = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"{self.user.username} - Notification Preferences"

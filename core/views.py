@@ -389,11 +389,15 @@ def approve_request(request, request_id, stage_id):
         except Exception as e:
             # Log blockchain error but don't fail the request
             print(f"Blockchain error: {e}")
-        
+        # Send notification to requester
+        from .notification_service import NotificationService
+        NotificationService.create_approval_notification(request_obj, approval_stage, request.user)
         # Return updated request details
         serializer = RequestDetailSerializer(request_obj)
         return Response(serializer.data, status=status.HTTP_200_OK)
     
+        
+
     except DepartmentRequest.DoesNotExist:
         return Response(
             {'error': 'Request not found'}, 
@@ -976,3 +980,115 @@ def get_all_relocations(request):
     relocations = Relocation.objects.all().select_related('stock', 'relocated_by')
     serializer = RelocationSerializer(relocations, many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+from .models import Notification, NotificationPreference
+from .serializers import NotificationSerializer, NotificationPreferenceSerializer
+from .notification_service import NotificationService
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_user_notifications(request):
+    """Get notifications for the current user"""
+    notifications = Notification.objects.filter(user=request.user).order_by('-created_at')
+    
+    # Optional query parameters
+    unread_only = request.GET.get('unread', '').lower() == 'true'
+    notification_type = request.GET.get('type')
+    
+    if unread_only:
+        notifications = notifications.filter(is_read=False)
+    
+    if notification_type:
+        notifications = notifications.filter(notification_type=notification_type)
+    
+    # Limit to 50 most recent notifications
+    notifications = notifications[:50]
+    
+    serializer = NotificationSerializer(notifications, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def mark_notification_as_read(request, notification_id):
+    """Mark a notification as read"""
+    try:
+        notification = Notification.objects.get(id=notification_id, user=request.user)
+        notification.is_read = True
+        notification.read_at = timezone.now()
+        notification.save()
+        
+        serializer = NotificationSerializer(notification)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    except Notification.DoesNotExist:
+        return Response(
+            {'error': 'Notification not found'}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def mark_all_notifications_read(request):
+    """Mark all notifications as read for the current user"""
+    updated_count = Notification.objects.filter(
+        user=request.user,
+        is_read=False
+    ).update(is_read=True, read_at=timezone.now())
+    
+    return Response(
+        {'message': f'Marked {updated_count} notifications as read'}, 
+        status=status.HTTP_200_OK
+    )
+
+@api_view(['GET', 'PUT'])
+@permission_classes([permissions.IsAuthenticated])
+def notification_preferences(request):
+    """Get or update notification preferences"""
+    try:
+        preference, created = NotificationPreference.objects.get_or_create(user=request.user)
+        
+        if request.method == 'GET':
+            serializer = NotificationPreferenceSerializer(preference)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        
+        elif request.method == 'PUT':
+            serializer = NotificationPreferenceSerializer(preference, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    except Exception as e:
+        return Response(
+            {'error': str(e)}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAdminUser])
+def send_test_notification(request):
+    """Send a test notification (admin only)"""
+    try:
+        notification = NotificationService.create_notification(
+            user=request.user,
+            notification_type='SYSTEM_ALERT',
+            title='Test Notification',
+            message='This is a test notification to verify the system is working.',
+            priority='MEDIUM'
+        )
+        
+        if notification:
+            serializer = NotificationSerializer(notification)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        else:
+            return Response(
+                {'error': 'Failed to create test notification'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    except Exception as e:
+        return Response(
+            {'error': str(e)}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
