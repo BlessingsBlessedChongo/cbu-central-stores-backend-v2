@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import BlockchainLog, CustomUser
+from .models import ApprovalHistory, BlockchainLog, CustomUser, DepartmentRequest
 
 @admin.register(BlockchainLog)
 class BlockchainLogAdmin(admin.ModelAdmin):
@@ -23,3 +23,19 @@ class CustomUserAdmin(admin.ModelAdmin):
             return f"{obj.blockchain_address[:8]}...{obj.blockchain_address[-6:]}"
         return "Not set"
     blockchain_address_short.short_description = 'Blockchain Address'
+
+@admin.register(DepartmentRequest)
+class DepartmentRequestAdmin(admin.ModelAdmin):
+    list_display = ['id', 'item_name', 'user', 'quantity', 'priority', 'status', 'department', 'created_at']
+    list_filter = ['status', 'priority', 'department', 'created_at']
+    search_fields = ['id', 'item_name', 'user__username']
+    readonly_fields = ['id', 'created_at', 'updated_at']
+    ordering = ['-created_at']
+
+@admin.register(ApprovalHistory)
+class ApprovalHistoryAdmin(admin.ModelAdmin):
+    list_display = ['request', 'approver', 'approved', 'created_at']
+    list_filter = ['approved', 'created_at']
+    search_fields = ['request__id', 'approver__username']
+    readonly_fields = ['created_at']
+    ordering = ['-created_at']

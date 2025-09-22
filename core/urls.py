@@ -10,8 +10,21 @@ urlpatterns = [
     path('api/auth/users/', views.get_all_users, name='all-users'),
     path('api/auth/users/<int:user_id>/', views.update_user, name='update-user'),
     path('api/auth/users/delete/<int:user_id>/', views.delete_user, name='delete-user'),
+
+    # Requests endpoints (exact match to API documentation)
+    path('api/requests/', views.get_all_requests, name='all-requests'), # GET
+    path('api/requests/', views.create_request, name='create-request'),  # POST
+    path('api/requests/<str:request_id>/', views.get_request_by_id, name='get-request'),# GET
+    path('api/requests/<str:request_id>/', views.update_request, name='update-request'),  # PUT
+    path('api/requests/<str:request_id>/', views.delete_request, name='delete-request'),  # DELETE
     
     # Blockchain endpoints
     path('api/blockchain/status/', views.blockchain_status, name='blockchain-status'),
     path('api/blockchain/process-events/', views.process_events_now, name='process-events'),
+
+    # Approval workflow endpoints
+    path('api/requests/<str:request_id>/details/', views.get_request_with_approvals, name='request-details'),
+    path('api/requests/<str:request_id>/approve/<int:stage_id>/', views.approve_request, name='approve-request'),
+    path('api/approvals/pending/', views.get_pending_approvals, name='pending-approvals'),
+    path('api/requests/<str:request_id>/history/', views.get_approval_history, name='approval-history'),
 ]

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from .models import CustomUser
+from .models import ApprovalHistory, ApprovalStage, CustomUser, DepartmentRequest
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
@@ -70,3 +70,102 @@ class UserUpdateSerializer(serializers.ModelSerializer):
             'username', 'email', 'firstname', 'lastname',
             'role', 'department', 'blockchain_address'
         ]
+
+class RequestSerializer(serializers.ModelSerializer):
+    user_id = serializers.CharField(source='user.username', read_only=True)
+    item = serializers.CharField(source='item_name')
+    createdAt = serializers.DateTimeField(source='created_at', format='%Y-%m-%dT%H:%M:%SZ')
+    updatedAt = serializers.DateTimeField(source='updated_at', format='%Y-%m-%dT%H:%M:%SZ')
+    
+    class Meta:
+        model = DepartmentRequest
+        fields = [
+            'id', 'user_id', 'item', 'quantity', 'priority', 
+            'reason', 'status', 'department', 'createdAt', 'updatedAt'
+        ]
+        read_only_fields = ['id', 'user_id', 'createdAt', 'updatedAt']
+
+class RequestCreateSerializer(serializers.ModelSerializer):
+    item_name = serializers.CharField(source='item')
+    requester_id = serializers.CharField(write_only=True)
+    
+    class Meta:
+        model = DepartmentRequest
+        fields = [
+            'item_name', 'quantity', 'priority', 'reason', 
+            'status', 'requester_id', 'department'
+        ]
+    
+    def validate_requester_id(self, value):
+        try:
+            user = CustomUser.objects.get(username=value)
+            return user
+        except CustomUser.DoesNotExist:
+            raise serializers.ValidationError('User not found')
+    
+    def create(self, validated_data):
+        user = validated_data.pop('requester_id')
+        validated_data['user'] = user
+        return super().create(validated_data)
+
+class RequestUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DepartmentRequest
+        fields = ['status', 'priority']
+        extra_kwargs = {
+            'status': {'required': False},
+            'priority': {'required': False},
+        }
+
+class ApprovalStageSerializer(serializers.ModelSerializer):
+    stage_display = serializers.CharField(source='get_stage_display', read_only=True)
+    approver_name = serializers.CharField(source='approver.username', read_only=True, allow_null=True)
+    
+    class Meta:
+        model = ApprovalStage
+        fields = [
+            'id', 'stage', 'stage_display', 'required', 'completed', 
+            'approved', 'approver', 'approver_name', 'comments',
+            'due_date', 'completed_at', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'completed_at']
+
+class ApprovalHistorySerializer(serializers.ModelSerializer):
+    approver_name = serializers.CharField(source='approver.username', read_only=True)
+    approver_role = serializers.CharField(source='approver.get_role_display', read_only=True)
+    
+    class Meta:
+        model = ApprovalHistory
+        fields = [
+            'id', 'approver', 'approver_name', 'approver_role',
+            'approved', 'reason', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']
+
+class RequestDetailSerializer(RequestSerializer):
+    """Extended serializer with approval information"""
+    approval_stages = ApprovalStageSerializer(many=True, read_only=True)
+    approval_history = ApprovalHistorySerializer(many=True, read_only=True)
+    current_stage = serializers.SerializerMethodField()
+    is_fully_approved = serializers.BooleanField(read_only=True)
+    
+    class Meta(RequestSerializer.Meta):
+        fields = RequestSerializer.Meta.fields + [
+            'approval_stages', 'approval_history', 
+            'current_stage', 'is_fully_approved'
+        ]
+    
+    def get_current_stage(self, obj):
+        current = obj.current_approval_stage
+        if current:
+            return {
+                'stage': current.stage,
+                'stage_display': current.get_stage_display(),
+                'due_date': current.due_date
+            }
+        return None
+
+class ApprovalActionSerializer(serializers.Serializer):
+    approved = serializers.BooleanField(required=True)
+    reason = serializers.CharField(required=True, max_length=500)
+    comments = serializers.CharField(required=False, allow_blank=True, max_length=1000)
