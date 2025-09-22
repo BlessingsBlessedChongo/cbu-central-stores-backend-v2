@@ -1,4 +1,5 @@
 from rest_framework import status, permissions
+from django.db import models
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -481,3 +482,219 @@ def can_approve_stage(user, stage_type):
         return False
     
     return user.role == role_mapping[stage_type]
+
+
+from django.db.models import Q
+from .models import Stock, Category, StockMovement
+from .serializers import (
+    StockSerializer, StockCreateSerializer, StockUpdateSerializer,
+    CategorySerializer, StockMovementSerializer
+)
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def create_stock_item(request):
+    """Create stock item - Exact match to API doc"""
+    # Only stores manager and admin can create stock items
+    if request.user.role not in ['stores_manager', 'admin']:
+        return Response(
+            {'error': 'Only stores managers and admins can create stock items'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    serializer = StockCreateSerializer(data=request.data)
+    if serializer.is_valid():
+        stock_item = serializer.save()
+        
+        # Create initial stock movement record
+        StockMovement.objects.create(
+            stock=stock_item,
+            movement_type='IN',
+            quantity=stock_item.original_quantity,
+            previous_quantity=0,
+            new_quantity=stock_item.original_quantity,
+            reason='Initial stock creation',
+            performed_by=request.user
+        )
+        
+        # Blockchain logging
+        try:
+            if web3_client.contract:
+                web3_client.contract.functions.adjustStock(
+                    stock_item.item_name,
+                    int(stock_item.original_quantity),
+                    'Initial stock creation'
+                ).transact({
+                    'from': request.user.blockchain_address,
+                    'gas': 100000
+                })
+        except Exception as e:
+            print(f"Blockchain error: {e}")
+        
+        response_serializer = StockSerializer(stock_item)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_all_stocks(request):
+    """Get all stock items with filtering - Exact match to API doc"""
+    stocks = Stock.objects.all().select_related('category')
+    
+    # Apply filters based on query parameters
+    category_filter = request.GET.get('category')
+    location_filter = request.GET.get('location')
+    
+    if category_filter:
+        stocks = stocks.filter(category__name__iexact=category_filter)
+    if location_filter:
+        stocks = stocks.filter(location__iexact=location_filter)
+    
+    serializer = StockSerializer(stocks, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_stock_by_id(request, stock_id):
+    """Get single stock item by ID - Exact match to API doc"""
+    try:
+        stock_item = Stock.objects.get(id=stock_id)
+        serializer = StockSerializer(stock_item)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    except Stock.DoesNotExist:
+        return Response(
+            {'error': 'Stock item not found'}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+@api_view(['PUT'])
+@permission_classes([permissions.IsAuthenticated])
+def update_stock_item(request, stock_id):
+    """Update stock item - Exact match to API doc"""
+    # Only stores manager and admin can update stock items
+    if request.user.role not in ['stores_manager', 'admin']:
+        return Response(
+            {'error': 'Only stores managers and admins can update stock items'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    try:
+        stock_item = Stock.objects.get(id=stock_id)
+        old_quantity = stock_item.current_quantity
+        
+        serializer = StockUpdateSerializer(stock_item, data=request.data, partial=True)
+        if serializer.is_valid():
+            updated_item = serializer.save()
+            
+            # Create stock movement record if quantity changed
+            if 'current_quantity' in serializer.validated_data:
+                new_quantity = serializer.validated_data['current_quantity']
+                quantity_change = new_quantity - old_quantity
+                
+                movement_type = 'ADJUSTMENT'
+                reason = 'Manual stock adjustment'
+                
+                if quantity_change > 0:
+                    movement_type = 'IN'
+                    reason = 'Stock addition'
+                elif quantity_change < 0:
+                    movement_type = 'OUT'
+                    reason = 'Stock deduction'
+                
+                StockMovement.objects.create(
+                    stock=stock_item,
+                    movement_type=movement_type,
+                    quantity=quantity_change,
+                    previous_quantity=old_quantity,
+                    new_quantity=new_quantity,
+                    reason=reason,
+                    performed_by=request.user
+                )
+                
+                # Blockchain logging
+                try:
+                    if web3_client.contract:
+                        web3_client.contract.functions.adjustStock(
+                            stock_item.item_name,
+                            quantity_change,
+                            reason
+                        ).transact({
+                            'from': request.user.blockchain_address,
+                            'gas': 100000
+                        })
+                except Exception as e:
+                    print(f"Blockchain error: {e}")
+            
+            response_serializer = StockSerializer(updated_item)
+            return Response(response_serializer.data, status=status.HTTP_200_OK)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    except Stock.DoesNotExist:
+        return Response(
+            {'error': 'Stock item not found'}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+@api_view(['DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def delete_stock_item(request, stock_id):
+    """Delete stock item - Exact match to API doc"""
+    # Only stores manager and admin can delete stock items
+    if request.user.role not in ['stores_manager', 'admin']:
+        return Response(
+            {'error': 'Only stores managers and admins can delete stock items'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    try:
+        stock_item = Stock.objects.get(id=stock_id)
+        stock_item.delete()
+        return Response(
+            {'message': 'Stock item deleted successfully'}, 
+            status=status.HTTP_200_OK
+        )
+    
+    except Stock.DoesNotExist:
+        return Response(
+            {'error': 'Stock item not found'}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_stock_movements(request, stock_id):
+    """Get movement history for a stock item"""
+    try:
+        stock_item = Stock.objects.get(id=stock_id)
+        movements = StockMovement.objects.filter(stock=stock_item).order_by('-created_at')
+        serializer = StockMovementSerializer(movements, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    except Stock.DoesNotExist:
+        return Response(
+            {'error': 'Stock item not found'}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_low_stock_alerts(request):
+    """Get low stock alerts"""
+    low_stock_items = Stock.objects.filter(
+        current_quantity__lte=models.F('low_stock_threshold'),
+        available=True
+    ).select_related('category')
+    
+    serializer = StockSerializer(low_stock_items, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_categories(request):
+    """Get all categories"""
+    categories = Category.objects.all().order_by('name')
+    serializer = CategorySerializer(categories, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)

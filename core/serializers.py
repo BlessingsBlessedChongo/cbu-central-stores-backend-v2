@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from .models import ApprovalHistory, ApprovalStage, CustomUser, DepartmentRequest
+from .models import ApprovalHistory, ApprovalStage, Category, CustomUser, DepartmentRequest, Stock, StockMovement
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
@@ -169,3 +169,67 @@ class ApprovalActionSerializer(serializers.Serializer):
     approved = serializers.BooleanField(required=True)
     reason = serializers.CharField(required=True, max_length=500)
     comments = serializers.CharField(required=False, allow_blank=True, max_length=1000)
+
+
+class CategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = ['id', 'name', 'description', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+class StockSerializer(serializers.ModelSerializer):
+    category = serializers.CharField(source='category.name', allow_null=True)
+    created_at = serializers.DateTimeField(format='%Y-%m-%dT%H:%M:%SZ')
+    updated_at = serializers.DateTimeField(format='%Y-%m-%dT%H:%M:%SZ')
+    
+    class Meta:
+        model = Stock
+        fields = [
+            'id', 'item_name', 'original_quantity', 'current_quantity',
+            'cost_each', 'location', 'available', 'category',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'available', 'created_at', 'updated_at']
+
+class StockCreateSerializer(serializers.ModelSerializer):
+    category = serializers.CharField(write_only=True, required=False, allow_null=True)
+    
+    class Meta:
+        model = Stock
+        fields = [
+            'item_name', 'original_quantity', 'current_quantity',
+            'cost_each', 'location', 'category'
+        ]
+    
+    def create(self, validated_data):
+        category_name = validated_data.pop('category', None)
+        if category_name:
+            category, created = Category.objects.get_or_create(
+                name=category_name,
+                defaults={'description': f'Auto-created category for {category_name}'}
+            )
+            validated_data['category'] = category
+        return super().create(validated_data)
+
+class StockUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Stock
+        fields = ['current_quantity', 'location']
+        extra_kwargs = {
+            'current_quantity': {'required': False},
+            'location': {'required': False},
+        }
+
+class StockMovementSerializer(serializers.ModelSerializer):
+    performed_by_name = serializers.CharField(source='performed_by.username', read_only=True)
+    movement_type_display = serializers.CharField(source='get_movement_type_display', read_only=True)
+    item_name = serializers.CharField(source='stock.item_name', read_only=True)
+    
+    class Meta:
+        model = StockMovement
+        fields = [
+            'id', 'stock', 'item_name', 'movement_type', 'movement_type_display',
+            'quantity', 'previous_quantity', 'new_quantity', 'reason',
+            'reference', 'performed_by', 'performed_by_name', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']

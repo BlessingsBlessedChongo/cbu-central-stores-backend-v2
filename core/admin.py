@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import ApprovalHistory, BlockchainLog, CustomUser, DepartmentRequest
+from .models import ApprovalHistory, BlockchainLog, Category, CustomUser, DepartmentRequest, Stock, StockMovement
 
 @admin.register(BlockchainLog)
 class BlockchainLogAdmin(admin.ModelAdmin):
@@ -37,5 +37,33 @@ class ApprovalHistoryAdmin(admin.ModelAdmin):
     list_display = ['request', 'approver', 'approved', 'created_at']
     list_filter = ['approved', 'created_at']
     search_fields = ['request__id', 'approver__username']
+    readonly_fields = ['created_at']
+    ordering = ['-created_at']
+
+@admin.register(Category)
+class CategoryAdmin(admin.ModelAdmin):
+    list_display = ['name', 'description', 'created_at']
+    search_fields = ['name', 'description']
+    readonly_fields = ['created_at', 'updated_at']
+    ordering = ['name']
+
+@admin.register(Stock)
+class StockAdmin(admin.ModelAdmin):
+    list_display = ['item_name', 'current_quantity', 'location', 'category', 'available', 'is_low_stock', 'created_at']
+    list_filter = ['category', 'location', 'available', 'created_at']
+    search_fields = ['item_name', 'location']
+    readonly_fields = ['created_at', 'updated_at', 'available', 'is_low_stock']
+    ordering = ['item_name']
+    
+    def is_low_stock(self, obj):
+        return obj.is_low_stock
+    is_low_stock.boolean = True
+    is_low_stock.short_description = 'Low Stock'
+
+@admin.register(StockMovement)
+class StockMovementAdmin(admin.ModelAdmin):
+    list_display = ['stock', 'movement_type', 'quantity', 'previous_quantity', 'new_quantity', 'performed_by', 'created_at']
+    list_filter = ['movement_type', 'created_at']
+    search_fields = ['stock__item_name', 'reason', 'reference']
     readonly_fields = ['created_at']
     ordering = ['-created_at']

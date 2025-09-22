@@ -261,3 +261,86 @@ def is_fully_approved(self):
     return all(stage.completed and stage.approved for stage in required_stages)
 
 DepartmentRequest.is_fully_approved = is_fully_approved
+
+
+#stock management
+class Category(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name_plural = "Categories"
+        ordering = ['name']
+    
+    def __str__(self):
+        return self.name
+
+class Stock(models.Model):
+    item_name = models.CharField(max_length=200)
+    original_quantity = models.PositiveIntegerField(validators=[MinValueValidator(0)])
+    current_quantity = models.PositiveIntegerField(validators=[MinValueValidator(0)])
+    cost_each = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    location = models.CharField(max_length=100)
+    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, related_name='stocks')
+    available = models.BooleanField(default=True)
+    low_stock_threshold = models.PositiveIntegerField(default=5)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['item_name']
+        indexes = [
+            models.Index(fields=['item_name']),
+            models.Index(fields=['location']),
+            models.Index(fields=['category']),
+            models.Index(fields=['available']),
+            models.Index(fields=['current_quantity']),
+        ]
+    
+    def save(self, *args, **kwargs):
+        # Update available status based on current quantity
+        self.available = self.current_quantity > 0
+        super().save(*args, **kwargs)
+    
+    @property
+    def is_low_stock(self):
+        return self.current_quantity <= self.low_stock_threshold
+    
+    @property
+    def total_value(self):
+        return self.current_quantity * self.cost_each
+    
+    def __str__(self):
+        return f"{self.item_name} - {self.current_quantity} in {self.location}"
+
+class StockMovement(models.Model):
+    MOVEMENT_TYPES = [
+        ('IN', 'Stock In'),
+        ('OUT', 'Stock Out'),
+        ('ADJUSTMENT', 'Adjustment'),
+        ('TRANSFER', 'Transfer'),
+    ]
+    
+    stock = models.ForeignKey(Stock, on_delete=models.CASCADE, related_name='movements')
+    movement_type = models.CharField(max_length=15, choices=MOVEMENT_TYPES)
+    quantity = models.IntegerField()  # Positive for IN, negative for OUT
+    previous_quantity = models.PositiveIntegerField()
+    new_quantity = models.PositiveIntegerField()
+    reason = models.TextField()
+    reference = models.CharField(max_length=100, blank=True, null=True)  # PO number, request ID, etc.
+    performed_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['movement_type']),
+            models.Index(fields=['created_at']),
+            models.Index(fields=['reference']),
+        ]
+    
+    def __str__(self):
+        return f"{self.get_movement_type_display()} - {self.stock.item_name} - {self.quantity}"
+    
