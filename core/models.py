@@ -343,4 +343,152 @@ class StockMovement(models.Model):
     
     def __str__(self):
         return f"{self.get_movement_type_display()} - {self.stock.item_name} - {self.quantity}"
+
+
+#Models for Delivery, Damage Report, Relocation 
+class Delivery(models.Model):
+    DELIVERY_STATUS = [
+        ('PENDING', 'Pending'),
+        ('RECEIVED', 'Received'),
+        ('PARTIAL', 'Partially Received'),
+        ('CANCELLED', 'Cancelled'),
+        ('COMPLETED', 'Completed'),
+    ]
+    
+    delivery_number = models.CharField(max_length=20, unique=True)
+    stock = models.ForeignKey(Stock, on_delete=models.CASCADE, related_name='deliveries')
+    supplier = models.CharField(max_length=200)
+    ordered_quantity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    delivered_quantity = models.PositiveIntegerField(default=0)
+    unit_cost = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    total_cost = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(0)])
+    expected_date = models.DateField()
+    actual_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=15, choices=DELIVERY_STATUS, default='PENDING')
+    notes = models.TextField(blank=True, null=True)
+    received_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='received_deliveries')
+    created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, related_name='created_deliveries')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-expected_date']
+        indexes = [
+            models.Index(fields=['delivery_number']),
+            models.Index(fields=['status']),
+            models.Index(fields=['expected_date']),
+            models.Index(fields=['supplier']),
+        ]
+    
+    def save(self, *args, **kwargs):
+        if not self.delivery_number:
+            # Generate delivery number: DEL-001, DEL-002, etc.
+            last_delivery = Delivery.objects.order_by('-created_at').first()
+            if last_delivery and last_delivery.delivery_number.startswith('DEL-'):
+                try:
+                    last_num = int(last_delivery.delivery_number.split('-')[1])
+                    new_num = last_num + 1
+                except (ValueError, IndexError):
+                    new_num = 1
+            else:
+                new_num = 1
+            self.delivery_number = f"DEL-{new_num:03d}"
+        
+        # Calculate total cost
+        self.total_cost = self.ordered_quantity * self.unit_cost
+        
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return f"{self.delivery_number} - {self.stock.item_name} - {self.status}"
+
+class DamageReport(models.Model):
+    DAMAGE_SEVERITY = [
+        ('MINOR', 'Minor Damage'),
+        ('MODERATE', 'Moderate Damage'),
+        ('SEVERE', 'Severe Damage'),
+        ('TOTAL', 'Total Loss'),
+    ]
+    
+    report_number = models.CharField(max_length=20, unique=True)
+    stock = models.ForeignKey(Stock, on_delete=models.CASCADE, related_name='damage_reports')
+    quantity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    severity = models.CharField(max_length=10, choices=DAMAGE_SEVERITY, default='MODERATE')
+    description = models.TextField()
+    location = models.CharField(max_length=100)
+    reported_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, related_name='reported_damages')
+    resolved = models.BooleanField(default=False)
+    resolution_notes = models.TextField(blank=True, null=True)
+    resolved_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='resolved_damages')
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['report_number']),
+            models.Index(fields=['severity']),
+            models.Index(fields=['resolved']),
+        ]
+    
+    def save(self, *args, **kwargs):
+        if not self.report_number:
+            # Generate report number: DAM-001, DAM-002, etc.
+            last_report = DamageReport.objects.order_by('-created_at').first()
+            if last_report and last_report.report_number.startswith('DAM-'):
+                try:
+                    last_num = int(last_report.report_number.split('-')[1])
+                    new_num = last_num + 1
+                except (ValueError, IndexError):
+                    new_num = 1
+            else:
+                new_num = 1
+            self.report_number = f"DAM-{new_num:03d}"
+        
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return f"{self.report_number} - {self.stock.item_name} - {self.get_severity_display()}"
+
+class Relocation(models.Model):
+    relocation_number = models.CharField(max_length=20, unique=True)
+    stock = models.ForeignKey(Stock, on_delete=models.CASCADE, related_name='relocations')
+    quantity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    from_location = models.CharField(max_length=100)
+    to_location = models.CharField(max_length=100)
+    reason = models.TextField()
+    relocated_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, related_name='relocations')
+    completed = models.BooleanField(default=False)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['relocation_number']),
+            models.Index(fields=['from_location']),
+            models.Index(fields=['to_location']),
+            models.Index(fields=['completed']),
+        ]
+    
+    def save(self, *args, **kwargs):
+        if not self.relocation_number:
+            # Generate relocation number: REL-001, REL-002, etc.
+            last_relocation = Relocation.objects.order_by('-created_at').first()
+            if last_relocation and last_relocation.relocation_number.startswith('REL-'):
+                try:
+                    last_num = int(last_relocation.relocation_number.split('-')[1])
+                    new_num = last_num + 1
+                except (ValueError, IndexError):
+                    new_num = 1
+            else:
+                new_num = 1
+            self.relocation_number = f"REL-{new_num:03d}"
+        
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return f"{self.relocation_number} - {self.stock.item_name} - {self.from_location} to {self.to_location}"
     

@@ -39,4 +39,19 @@ urlpatterns = [
     path('api/stocks/<int:stock_id>/movements/', views.get_stock_movements, name='stock-movements'),
     path('api/stocks/alerts/low-stock/', views.get_low_stock_alerts, name='low-stock-alerts'),
     path('api/stocks/categories/', views.get_categories, name='categories'),
+
+    # Delivery endpoints
+    path('api/deliveries/', views.create_delivery, name='create-delivery'),  # POST
+    path('api/deliveries/', views.get_all_deliveries, name='all-deliveries'),  # GET
+    path('api/deliveries/<int:delivery_id>/', views.get_delivery_by_id, name='get-delivery'),
+    path('api/deliveries/<int:delivery_id>/', views.update_delivery, name='update-delivery'),  # PUT
+    
+    # Damage report endpoints
+    path('api/report-damage/', views.report_damage, name='report-damage'),  # POST
+    path('api/damage-reports/', views.get_all_damage_reports, name='all-damage-reports'),  # GET
+    path('api/damage-reports/<int:report_id>/', views.update_damage_report, name='update-damage-report'),  # PUT
+    
+    # Relocation endpoints
+    path('api/relocate/', views.relocate_stock, name='relocate-stock'),  # POST
+    path('api/relocations/', views.get_all_relocations, name='all-relocations'),  # GET
 ]

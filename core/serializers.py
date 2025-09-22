@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from .models import ApprovalHistory, ApprovalStage, Category, CustomUser, DepartmentRequest, Stock, StockMovement
+from .models import ApprovalHistory, ApprovalStage, Category, CustomUser, DamageReport, Delivery, DepartmentRequest, Relocation, Stock, StockMovement
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
@@ -233,3 +233,101 @@ class StockMovementSerializer(serializers.ModelSerializer):
             'reference', 'performed_by', 'performed_by_name', 'created_at'
         ]
         read_only_fields = ['id', 'created_at']
+
+
+class DeliverySerializer(serializers.ModelSerializer):
+    stock_name = serializers.CharField(source='stock.item_name', read_only=True)
+    received_by_name = serializers.CharField(source='received_by.username', read_only=True, allow_null=True)
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    created_at = serializers.DateTimeField(format='%Y-%m-%dT%H:%M:%SZ')
+    updated_at = serializers.DateTimeField(format='%Y-%m-%dT%H:%M:%SZ')
+    
+    class Meta:
+        model = Delivery
+        fields = [
+            'id', 'delivery_number', 'stock', 'stock_name', 'supplier',
+            'ordered_quantity', 'delivered_quantity', 'unit_cost', 'total_cost',
+            'expected_date', 'actual_date', 'status', 'notes',
+            'received_by', 'received_by_name', 'created_by', 'created_by_name',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'delivery_number', 'total_cost', 'created_at', 'updated_at']
+
+class DeliveryCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Delivery
+        fields = [
+            'stock', 'supplier', 'ordered_quantity', 'unit_cost',
+            'expected_date', 'notes'
+        ]
+    
+    def create(self, validated_data):
+        validated_data['created_by'] = self.context['request'].user
+        return super().create(validated_data)
+
+class DeliveryUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Delivery
+        fields = ['delivered_quantity', 'actual_date', 'status', 'notes', 'received_by']
+
+class DamageReportSerializer(serializers.ModelSerializer):
+    stock_name = serializers.CharField(source='stock.item_name', read_only=True)
+    reported_by_name = serializers.CharField(source='reported_by.username', read_only=True)
+    resolved_by_name = serializers.CharField(source='resolved_by.username', read_only=True, allow_null=True)
+    created_at = serializers.DateTimeField(format='%Y-%m-%dT%H:%M:%SZ')
+    updated_at = serializers.DateTimeField(format='%Y-%m-%dT%H:%M:%SZ')
+    resolved_at = serializers.DateTimeField(format='%Y-%m-%dT%H:%M:%SZ', allow_null=True)
+    
+    class Meta:
+        model = DamageReport
+        fields = [
+            'id', 'report_number', 'stock', 'stock_name', 'quantity',
+            'severity', 'description', 'location', 'reported_by', 'reported_by_name',
+            'resolved', 'resolution_notes', 'resolved_by', 'resolved_by_name',
+            'resolved_at', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'report_number', 'created_at', 'updated_at']
+
+class DamageReportCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DamageReport
+        fields = ['stock', 'quantity', 'severity', 'description', 'location']
+    
+    def create(self, validated_data):
+        validated_data['reported_by'] = self.context['request'].user
+        return super().create(validated_data)
+
+class DamageReportUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DamageReport
+        fields = ['resolved', 'resolution_notes', 'resolved_by']
+
+class RelocationSerializer(serializers.ModelSerializer):
+    stock_name = serializers.CharField(source='stock.item_name', read_only=True)
+    relocated_by_name = serializers.CharField(source='relocated_by.username', read_only=True)
+    created_at = serializers.DateTimeField(format='%Y-%m-%dT%H:%M:%SZ')
+    updated_at = serializers.DateTimeField(format='%Y-%m-%dT%H:%M:%SZ')
+    completed_at = serializers.DateTimeField(format='%Y-%m-%dT%H:%M:%SZ', allow_null=True)
+    
+    class Meta:
+        model = Relocation
+        fields = [
+            'id', 'relocation_number', 'stock', 'stock_name', 'quantity',
+            'from_location', 'to_location', 'reason', 'relocated_by', 'relocated_by_name',
+            'completed', 'completed_at', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'relocation_number', 'created_at', 'updated_at']
+
+class RelocationCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Relocation
+        fields = ['stock', 'quantity', 'from_location', 'to_location', 'reason']
+    
+    def create(self, validated_data):
+        validated_data['relocated_by'] = self.context['request'].user
+        return super().create(validated_data)
+
+class RelocationUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Relocation
+        fields = ['completed', 'completed_at']

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import ApprovalHistory, BlockchainLog, Category, CustomUser, DepartmentRequest, Stock, StockMovement
+from .models import ApprovalHistory, BlockchainLog, Category, CustomUser, DamageReport, Delivery, DepartmentRequest, Relocation, Stock, StockMovement
 
 @admin.register(BlockchainLog)
 class BlockchainLogAdmin(admin.ModelAdmin):
@@ -66,4 +66,28 @@ class StockMovementAdmin(admin.ModelAdmin):
     list_filter = ['movement_type', 'created_at']
     search_fields = ['stock__item_name', 'reason', 'reference']
     readonly_fields = ['created_at']
+    ordering = ['-created_at']
+
+@admin.register(Delivery)
+class DeliveryAdmin(admin.ModelAdmin):
+    list_display = ['delivery_number', 'stock', 'supplier', 'ordered_quantity', 'delivered_quantity', 'status', 'expected_date', 'created_at']
+    list_filter = ['status', 'expected_date', 'created_at']
+    search_fields = ['delivery_number', 'stock__item_name', 'supplier']
+    readonly_fields = ['delivery_number', 'total_cost', 'created_at', 'updated_at']
+    ordering = ['-created_at']
+
+@admin.register(DamageReport)
+class DamageReportAdmin(admin.ModelAdmin):
+    list_display = ['report_number', 'stock', 'quantity', 'severity', 'resolved', 'reported_by', 'created_at']
+    list_filter = ['severity', 'resolved', 'created_at']
+    search_fields = ['report_number', 'stock__item_name', 'description']
+    readonly_fields = ['report_number', 'created_at', 'updated_at']
+    ordering = ['-created_at']
+
+@admin.register(Relocation)
+class RelocationAdmin(admin.ModelAdmin):
+    list_display = ['relocation_number', 'stock', 'quantity', 'from_location', 'to_location', 'completed', 'relocated_by', 'created_at']
+    list_filter = ['completed', 'created_at']
+    search_fields = ['relocation_number', 'stock__item_name', 'from_location', 'to_location']
+    readonly_fields = ['relocation_number', 'created_at', 'updated_at']
     ordering = ['-created_at']

@@ -698,3 +698,281 @@ def get_categories(request):
     categories = Category.objects.all().order_by('name')
     serializer = CategorySerializer(categories, many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)
+
+from django.utils import timezone
+from .models import Delivery, DamageReport, Relocation
+from .serializers import (
+    DeliverySerializer, DeliveryCreateSerializer, DeliveryUpdateSerializer,
+    DamageReportSerializer, DamageReportCreateSerializer, DamageReportUpdateSerializer,
+    RelocationSerializer, RelocationCreateSerializer, RelocationUpdateSerializer
+)
+
+# Delivery Views
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def create_delivery(request):
+    """Create a new delivery - Procurement officers and above"""
+    if request.user.role not in ['procurement_officer', 'stores_manager', 'admin']:
+        return Response(
+            {'error': 'Only procurement officers and above can create deliveries'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    serializer = DeliveryCreateSerializer(data=request.data, context={'request': request})
+    if serializer.is_valid():
+        delivery = serializer.save()
+        
+        # Blockchain logging
+        try:
+            if web3_client.contract:
+                web3_client.contract.functions.logDelivery(
+                    delivery.stock.item_name,
+                    delivery.ordered_quantity,
+                    delivery.supplier
+                ).transact({
+                    'from': request.user.blockchain_address,
+                    'gas': 100000
+                })
+        except Exception as e:
+            print(f"Blockchain error: {e}")
+        
+        response_serializer = DeliverySerializer(delivery)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_all_deliveries(request):
+    """Get all deliveries"""
+    deliveries = Delivery.objects.all().select_related('stock', 'created_by', 'received_by')
+    serializer = DeliverySerializer(deliveries, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_delivery_by_id(request, delivery_id):
+    """Get single delivery by ID"""
+    try:
+        delivery = Delivery.objects.get(id=delivery_id)
+        serializer = DeliverySerializer(delivery)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    except Delivery.DoesNotExist:
+        return Response(
+            {'error': 'Delivery not found'}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+@api_view(['PUT'])
+@permission_classes([permissions.IsAuthenticated])
+def update_delivery(request, delivery_id):
+    """Update delivery - Receive delivery"""
+    try:
+        delivery = Delivery.objects.get(id=delivery_id)
+        
+        # Only stores manager and above can receive deliveries
+        if request.user.role not in ['stores_manager', 'admin']:
+            return Response(
+                {'error': 'Only stores managers can receive deliveries'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = DeliveryUpdateSerializer(delivery, data=request.data, partial=True)
+        if serializer.is_valid():
+            updated_delivery = serializer.save()
+            
+            # If delivery is being received, update stock
+            if 'delivered_quantity' in serializer.validated_data:
+                delivered_qty = serializer.validated_data['delivered_quantity']
+                
+                # Update stock quantity
+                stock = delivery.stock
+                stock.current_quantity += delivered_qty
+                stock.save()
+                
+                # Create stock movement
+                StockMovement.objects.create(
+                    stock=stock,
+                    movement_type='IN',
+                    quantity=delivered_qty,
+                    previous_quantity=stock.current_quantity - delivered_qty,
+                    new_quantity=stock.current_quantity,
+                    reason=f'Delivery received: {delivery.delivery_number}',
+                    reference=delivery.delivery_number,
+                    performed_by=request.user
+                )
+            
+            response_serializer = DeliverySerializer(updated_delivery)
+            return Response(response_serializer.data, status=status.HTTP_200_OK)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    except Delivery.DoesNotExist:
+        return Response(
+            {'error': 'Delivery not found'}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+# Damage Report Views
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def report_damage(request):
+    """Report damaged stock - Department deans and above"""
+    if request.user.role not in ['department_dean', 'procurement_officer', 'stores_manager', 'admin']:
+        return Response(
+            {'error': 'Only department deans and above can report damage'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    serializer = DamageReportCreateSerializer(data=request.data, context={'request': request})
+    if serializer.is_valid():
+        damage_report = serializer.save()
+        
+        # Update stock quantity
+        stock = damage_report.stock
+        if stock.current_quantity >= damage_report.quantity:
+            stock.current_quantity -= damage_report.quantity
+            stock.save()
+            
+            # Create stock movement
+            StockMovement.objects.create(
+                stock=stock,
+                movement_type='OUT',
+                quantity=-damage_report.quantity,
+                previous_quantity=stock.current_quantity + damage_report.quantity,
+                new_quantity=stock.current_quantity,
+                reason=f'Damage reported: {damage_report.report_number} - {damage_report.description}',
+                reference=damage_report.report_number,
+                performed_by=request.user
+            )
+        
+        # Blockchain logging
+        try:
+            if web3_client.contract:
+                web3_client.contract.functions.reportDamage(
+                    damage_report.stock.item_name,
+                    damage_report.quantity,
+                    damage_report.description
+                ).transact({
+                    'from': request.user.blockchain_address,
+                    'gas': 100000
+                })
+        except Exception as e:
+            print(f"Blockchain error: {e}")
+        
+        response_serializer = DamageReportSerializer(damage_report)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_all_damage_reports(request):
+    """Get all damage reports"""
+    damage_reports = DamageReport.objects.all().select_related('stock', 'reported_by', 'resolved_by')
+    serializer = DamageReportSerializer(damage_reports, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+@api_view(['PUT'])
+@permission_classes([permissions.IsAuthenticated])
+def update_damage_report(request, report_id):
+    """Update damage report resolution - Stores manager and above"""
+    try:
+        damage_report = DamageReport.objects.get(id=report_id)
+        
+        # Only stores manager and above can resolve damage reports
+        if request.user.role not in ['stores_manager', 'admin']:
+            return Response(
+                {'error': 'Only stores managers can resolve damage reports'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = DamageReportUpdateSerializer(damage_report, data=request.data, partial=True)
+        if serializer.is_valid():
+            if 'resolved' in serializer.validated_data and serializer.validated_data['resolved']:
+                serializer.validated_data['resolved_by'] = request.user
+                serializer.validated_data['resolved_at'] = timezone.now()
+            
+            updated_report = serializer.save()
+            response_serializer = DamageReportSerializer(updated_report)
+            return Response(response_serializer.data, status=status.HTTP_200_OK)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    except DamageReport.DoesNotExist:
+        return Response(
+            {'error': 'Damage report not found'}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+# Relocation Views
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def relocate_stock(request):
+    """Relocate stock - Stores manager and above"""
+    if request.user.role not in ['stores_manager', 'admin']:
+        return Response(
+            {'error': 'Only stores managers can relocate stock'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    serializer = RelocationCreateSerializer(data=request.data, context={'request': request})
+    if serializer.is_valid():
+        relocation = serializer.save()
+        
+        # Verify stock availability
+        if relocation.stock.current_quantity < relocation.quantity:
+            return Response(
+                {'error': 'Insufficient stock for relocation'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Update stock location
+        relocation.stock.location = relocation.to_location
+        relocation.stock.save()
+        
+        # Create stock movement
+        StockMovement.objects.create(
+            stock=relocation.stock,
+            movement_type='TRANSFER',
+            quantity=0,  # Quantity doesn't change, just location
+            previous_quantity=relocation.stock.current_quantity,
+            new_quantity=relocation.stock.current_quantity,
+            reason=f'Relocation: {relocation.from_location} to {relocation.to_location} - {relocation.reason}',
+            reference=relocation.relocation_number,
+            performed_by=request.user
+        )
+        
+        # Mark relocation as completed
+        relocation.completed = True
+        relocation.completed_at = timezone.now()
+        relocation.save()
+        
+        # Blockchain logging
+        try:
+            if web3_client.contract:
+                web3_client.contract.functions.logRelocation(
+                    relocation.stock.item_name,
+                    relocation.quantity,
+                    relocation.from_location,
+                    relocation.to_location
+                ).transact({
+                    'from': request.user.blockchain_address,
+                    'gas': 100000
+                })
+        except Exception as e:
+            print(f"Blockchain error: {e}")
+        
+        response_serializer = RelocationSerializer(relocation)
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_all_relocations(request):
+    """Get all relocations"""
+    relocations = Relocation.objects.all().select_related('stock', 'relocated_by')
+    serializer = RelocationSerializer(relocations, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
