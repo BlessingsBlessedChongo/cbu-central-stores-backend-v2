@@ -985,7 +985,7 @@ def get_all_relocations(request):
 
 from .models import Notification, NotificationPreference
 from .serializers import NotificationSerializer, NotificationPreferenceSerializer
-from .notification_service import NotificationService
+# from .notification_service import NotificationService
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
@@ -1065,11 +1065,11 @@ def notification_preferences(request):
             {'error': str(e)}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
+"""
 @api_view(['POST'])
 @permission_classes([permissions.IsAdminUser])
 def send_test_notification(request):
-    """Send a test notification (admin only)"""
+    #Send a test notification (admin only)
     try:
         notification = NotificationService.create_notification(
             user=request.user,
@@ -1093,7 +1093,7 @@ def send_test_notification(request):
             {'error': str(e)}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-    
+    """
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg.views import get_schema_view

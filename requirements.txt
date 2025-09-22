@@ -13,6 +13,8 @@ pytest
 pytest-django
 requests
 rest_framework_simplejwt
-redis==5.0.1
-celery==5.3.4
-channels-redis==4.1.0
+redis
+celery
+channels-redis
+drf-yasg
+djangorestframework-simplejwt
