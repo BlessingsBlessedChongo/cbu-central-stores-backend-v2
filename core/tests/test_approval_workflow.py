@@ -3,7 +3,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from django.urls import reverse
 from django.utils import timezone
-from .models import DepartmentRequest, ApprovalStage, CustomUser
+from ..models import DepartmentRequest, ApprovalStage, CustomUser
 
 @pytest.mark.django_db
 class TestApprovalWorkflow:
